@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.react-pdf__Document {
+    width: 50vw !important;
+}
