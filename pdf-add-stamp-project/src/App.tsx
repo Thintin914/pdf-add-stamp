@@ -15,7 +15,8 @@ export default function App() {
   const [files, setFiles] = useState<File[] | null>(null);
 
   const handleChange = async(files: File[]) => {
-    setFiles(files);
+    if (files.length > 0)
+      setFiles(files);
   };
 
   const pdfDoc = useRef<PDFDocument | null>(null);
