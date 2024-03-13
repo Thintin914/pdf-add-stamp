@@ -12,34 +12,60 @@ function hexToRgb(hex: string) {
 }
 
 export default function App() {
-  const [file, setFile] = useState<File | null>(null);
-  const [pageSize, setPageSize] = useState<{width: number, height: number}>({width: 0, height: 0});
-  const [totalPages, setTotalPages] = useState<number>(0);
+  const [files, setFiles] = useState<File[] | null>(null);
 
-  const handleChange = async(file: File) => {
-    setFile(file);
-    let array_buffer = await file.arrayBuffer();
-    pdfDoc.current = await PDFDocument.load(array_buffer);
-    allPages.current = pdfDoc.current.getPages();
-    setPageSize(allPages.current[0].getSize())
-    setTotalPages(allPages.current.length);
+  const handleChange = async(files: File[]) => {
+    setFiles(files);
   };
 
   const pdfDoc = useRef<PDFDocument | null>(null);
+  const pageSize = useRef<{width: number, height: number}>({width: 0, height: 0});
   const allPages = useRef<PDFPage[]>([])
   const padding = 5;
 
-  async function createPDFFile(){
-    if (!file)
-      return;
-    if (!pdfDoc.current)
+  async function loopMultiplePDFFiles(){
+    if (!files)
       return;
 
-    let array_buffer = await file.arrayBuffer();
+    for(let i = 0; i < files.length; i++){
+      let url = await createPDFFile(i);
+      if (url){
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute(
+          'download',
+          `${files[i].name}`,
+        );
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    
+        URL.revokeObjectURL(url);
+      }
+    }
+  }
+
+  async function preview(){
+    if (!files)
+      return;
+
+    let url = await createPDFFile(0);
+    if (url){
+      window.open(url);
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function createPDFFile(file_index: number){
+    if (!files)
+      return;
+    if (!files[file_index])
+      return;
+
+    let array_buffer = await files[file_index].arrayBuffer();
     pdfDoc.current = await PDFDocument.load(array_buffer);
     allPages.current = pdfDoc.current.getPages();
-    setPageSize(allPages.current[0].getSize())
-    setTotalPages(allPages.current.length);
+    pageSize.current = allPages.current[0].getSize();
     const timesRomanFont = await pdfDoc.current.embedFont(StandardFonts.TimesRomanItalic)
 
     for(let i = 0; i < textCards.length; i++){
@@ -49,13 +75,13 @@ export default function App() {
       if (card.x === 'left')
         x = 0 + padding;
       else if (card.x === 'middle')
-        x = (pageSize.width * 0.5) - (textWidth * 0.25);
+        x = (pageSize.current.width * 0.5) - (textWidth * 0.25);
       else if (card.x === 'right')
-        x = pageSize.width - (textWidth * 0.5) - padding;
+        x = pageSize.current.width - (textWidth * 0.5) - padding;
 
       let y = 0;
       if (card.y === 'above')
-        y = pageSize.height - padding - card.fontSize;
+        y = pageSize.current.height - padding - card.fontSize;
       else if (card.y === 'below')
         y = 0 + padding;
 
@@ -130,13 +156,13 @@ export default function App() {
       if (card.x === 'left')
         x = 0 + padding;
       else if (card.x === 'middle')
-        x = (pageSize.width * 0.5) - (imageSize.width * 0.5);
+        x = (pageSize.current.width * 0.5) - (imageSize.width * 0.5);
       else if (card.x === 'right')
-        x = pageSize.width - imageSize.width - padding;
+        x = pageSize.current.width - imageSize.width - padding;
 
       let y = 0;
       if (card.y === 'above')
-        y = pageSize.height - padding - imageSize.height;
+        y = pageSize.current.height - padding - imageSize.height;
       else if (card.y === 'below')
         y = 0 + padding;
 
@@ -179,8 +205,8 @@ export default function App() {
     const pdfBytes = await pdfDoc.current.save();
     const blob = new Blob([pdfBytes], { type: "application/pdf;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    window.open(url);
-    URL.revokeObjectURL(url);
+
+    return url;
   }
 
   const addImageFile = (file: File, index: number) => {
@@ -406,29 +432,54 @@ export default function App() {
       <div className=" w-full md:w-[20vw] h-full flex flex-col">
         <div className=" w-full h-[80%]">
           <FileUploader
+            multiple
             handleChange={handleChange}
             name="file"
             types={["pdf"]}
             children={
-              <div className=" w-full h-full border border-zinc-800 rounded-sm border-dashed cursor-pointer hover:border-zinc-400 hover:text-zinc-400 flex justify-center items-center">
-                <p>{file ? file.name : 'Upload PDF File Here'}</p>
+              <div className=" w-full h-full border border-zinc-800 rounded-sm border-dashed cursor-pointer hover:border-zinc-400 hover:text-zinc-400 flex flex-col justify-center items-center">
+                {
+                  files ?
+                  <div className=" w-full inline-flex flex-col text-center gap-2">
+                    <p>{files[0].name}</p>
+                    {files.length > 1 ? <p>{`and ${files.length - 1} more`}</p> : <></>}
+                  </div> :
+                  <p>Upload PDF File Here</p>
+                }
               </div>
             }
           />
         </div>
 
-        <div className=" w-full h-[20%] bg-zinc-800 text-white inline-flex justify-center items-center font-semibold select-none cursor-pointer hover:opacity-80"
-          onClick={() =>{
-            if (!file)
+        <div className=" w-full h-[10%] bg-zinc-800 text-white inline-flex justify-center items-center font-semibold select-none cursor-pointer hover:opacity-80"
+          onClick={async() =>{
+            if (!files)
               return;
-            createPDFFile();
+            
+            await preview();
           }}
         >
           {
-            file ?
+            files ?
             <div className=" w-full flex flex-col justify-center items-center">
-              <p>{`${pageSize.width} x ${pageSize.height} px`}</p>
-              <p>{`${totalPages} pages`}</p>
+              <p>Preview</p>
+            </div> :
+            <p></p>
+          }
+        </div>
+
+        <div className=" w-full h-[10%] bg-zinc-800 text-white inline-flex justify-center items-center font-semibold select-none cursor-pointer hover:opacity-80"
+          onClick={async() =>{
+            if (!files)
+              return;
+            
+            await loopMultiplePDFFiles();
+          }}
+        >
+          {
+            files ?
+            <div className=" w-full flex flex-col justify-center items-center">
+              <p>Download</p>
             </div> :
             <p>Upload PDF File First</p>
           }
