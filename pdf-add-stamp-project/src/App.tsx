@@ -1,6 +1,8 @@
 import { PDFDocument, PDFImage, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { useEffect, useRef, useState } from "react";
 import { FileUploader } from "react-drag-drop-files";
+import html2canvas from 'html2canvas';
+const mammoth = require("mammoth/mammoth.browser");
 
 function hexToRgb(hex: string) {
   var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -17,7 +19,49 @@ export default function App() {
   const [files, setFiles] = useState<File[] | null>(null);
 
   const handleChange = async (files: File[]) => {
-    if (files.length > 0) setFiles(files);
+    let _files: File[] = [];
+    for(let i = 0; i < files.length; i++){
+      let file = files[i];
+      if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'){
+        let array_buffer = await file.arrayBuffer();
+        let result = await mammoth.convertToHtml({arrayBuffer: array_buffer});
+
+        var html = result.value; // The generated HTML
+        var htmlObject = document.createElement('div');
+        htmlObject.innerHTML = html;
+        document.body.appendChild(htmlObject);
+        let canvas = await html2canvas(htmlObject);
+        let url = canvas.toDataURL("image/jpeg", 1.0);
+        document.body.removeChild(htmlObject);
+        
+        const doc = await PDFDocument.create();
+        const page = doc.addPage();
+        const size = page.getSize();
+        let pdfImage = await doc.embedJpg(url);
+
+        const scaleFactor = (size.width + padding) / pdfImage.width;
+
+        // Calculate the scaled dimensions
+        const scaledWidth = pdfImage.width * scaleFactor;
+        const scaledHeight = pdfImage.height * scaleFactor;
+
+        page.setHeight(scaledHeight + padding);
+
+        page.drawImage(pdfImage, {
+          x: padding / 2,
+          y: padding / 2,
+          width: scaledWidth,
+          height: scaledHeight
+        });
+        const pdfBytes = await doc.save();
+        let new_blob = new Blob([pdfBytes]);
+        let new_file = new File([new_blob], file.name.slice(0, -4) + 'pdf', {type: 'application/pdf'});
+        _files.push(new_file);
+      } else {
+        _files.push(files[i]);
+      }
+    }
+    if (_files.length > 0) setFiles(_files);
   };
 
   const pdfDoc = useRef<PDFDocument | null>(null);
@@ -70,6 +114,8 @@ export default function App() {
 
     for (let i = 0; i < textCards.length; i++) {
       let card = textCards[i];
+      if (!card.fontSize)
+        continue;
       let textWidth = card.fontSize * card.text.length;
       let x = 0;
       if (card.x === "left") x = 0 + padding;
@@ -134,6 +180,8 @@ export default function App() {
 
     for (let i = 0; i < imageCards.length; i++) {
       let card = imageCards[i];
+      if (!card.scale)
+        continue;
       if (!card.image) continue;
 
       let filetype = card.image.type;
@@ -315,29 +363,17 @@ export default function App() {
               />
               <p className=" font-semibold">Scale:</p>
               <input
+                type="number"
                 value={imageCard.scale}
                 className=" w-full border border-zinc-800 p-1"
-                onKeyDown={(e) =>{
-                  console.log(e.key)
-                  if (e.key === '.'){
-                    let val = (imageCard.scale + 0.1).toFixed(1);
-                    let temp = imageCards;
-                    temp[index].scale = parseFloat(val);
-                    setImageCards([...temp]);
-                  }
-                  if (e.key === '-'){
-                    let val = imageCard.scale * -1;
+                onChange={(e) => {
+                  try{
+                     let val = parseFloat(e.target.value);
+                    if (val < 0) val = 0;
                     let temp = imageCards;
                     temp[index].scale = val;
                     setImageCards([...temp]);
-                  }
-                }}
-                onChange={(e) => {
-                  let val = parseFloat(e.target.value);
-                  if (isNaN(val)) val = 0;
-                  let temp = imageCards;
-                  temp[index].scale = val;
-                  setImageCards([...temp]);
+                  } catch (e: any){}
                 }}
               />
               <p className=" font-semibold">Upload Image:</p>
@@ -446,11 +482,13 @@ export default function App() {
               />
               <p className=" font-semibold">Font Size:</p>
               <input
+                type="number"
                 value={textCard.fontSize}
                 className=" w-full border border-zinc-800 p-1"
                 onChange={(e) => {
                   let val = parseInt(e.target.value);
-                  if (isNaN(val)) val = 0;
+                  if (val < 1)
+                    val = 1;
                   let temp = textCards;
                   temp[index].fontSize = val;
                   setTextCards([...temp]);
@@ -487,7 +525,7 @@ export default function App() {
             multiple
             handleChange={handleChange}
             name="file"
-            types={["pdf"]}
+            types={["pdf", 'doc', 'docx']}
             children={
               <div className=" w-full h-full border border-zinc-800 rounded-sm border-dashed cursor-pointer hover:border-zinc-400 hover:text-zinc-400 flex flex-col justify-center items-center">
                 {files ? (
