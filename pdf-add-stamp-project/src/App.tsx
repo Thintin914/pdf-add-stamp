@@ -55,7 +55,8 @@ export default function App() {
         });
         const pdfBytes = await doc.save();
         let new_blob = new Blob([pdfBytes]);
-        let new_file = new File([new_blob], file.name.slice(0, -4) + 'pdf', {type: 'application/pdf'});
+        let name = file.name.split('.');
+        let new_file = new File([new_blob], name[0] + '.pdf', {type: 'application/pdf'});
         _files.push(new_file);
       } else {
         _files.push(files[i]);
