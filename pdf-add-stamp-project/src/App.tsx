@@ -1,8 +1,7 @@
 import { PDFDocument, PDFImage, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { useEffect, useRef, useState } from "react";
 import { FileUploader } from "react-drag-drop-files";
-import html2canvas from 'html2canvas';
-const mammoth = require("mammoth/mammoth.browser");
+
 
 function hexToRgb(hex: string) {
   var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -15,6 +14,21 @@ function hexToRgb(hex: string) {
     : null;
 }
 
+async function fetchCover(url: string) {
+  const loadImageAsArrayBuffer = async (imageUrl: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      const buffer = await response.arrayBuffer();
+      return buffer;
+    } catch (error) {
+      return null
+    }
+  };
+
+  let buffer = await loadImageAsArrayBuffer(url);
+  return buffer;
+}
+
 export default function App() {
   const [files, setFiles] = useState<File[] | null>(null);
 
@@ -24,39 +38,12 @@ export default function App() {
       let file = files[i];
       if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'){
         let array_buffer = await file.arrayBuffer();
-        let result = await mammoth.convertToHtml({arrayBuffer: array_buffer});
-
-        var html = result.value; // The generated HTML
-        var htmlObject = document.createElement('div');
-        htmlObject.innerHTML = html;
-        document.body.appendChild(htmlObject);
-        let canvas = await html2canvas(htmlObject);
-        let url = canvas.toDataURL("image/jpeg", 1.0);
-        document.body.removeChild(htmlObject);
-        
-        const doc = await PDFDocument.create();
-        const page = doc.addPage();
-        const size = page.getSize();
-        let pdfImage = await doc.embedJpg(url);
-
-        const scaleFactor = (size.width + padding) / pdfImage.width;
-
-        // Calculate the scaled dimensions
-        const scaledWidth = pdfImage.width * scaleFactor;
-        const scaledHeight = pdfImage.height * scaleFactor;
-
-        page.setHeight(scaledHeight + padding);
-
-        page.drawImage(pdfImage, {
-          x: padding / 2,
-          y: padding / 2,
-          width: scaledWidth,
-          height: scaledHeight
+        let buffer = await PSPDFKit.convertToPDF({
+          document: array_buffer,
+          baseUrl: `${window.location.protocol}//${window.location.host}/${process.env.PUBLIC_URL}`,
         });
-        const pdfBytes = await doc.save();
-        let new_blob = new Blob([pdfBytes]);
-        let name = file.name.split('.');
-        let new_file = new File([new_blob], name[0] + '.pdf', {type: 'application/pdf'});
+        let blob = new Blob([buffer], { type: "application/pdf" });
+        let new_file = new File([blob], file.name.split('.')[0] + '.pdf');
         _files.push(new_file);
       } else {
         _files.push(files[i]);
